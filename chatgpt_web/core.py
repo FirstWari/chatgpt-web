@@ -275,7 +275,7 @@ def stop(chat_handle: str, cfg: Config | None = None) -> dict:
         page = sess.page_for_handle(chat_handle)
         btn = first(page, S.STOP_BUTTON)
         if btn and btn.is_visible():
-            btn.click()
+            sess.human(page).click_locator(btn)
             return {"stopped": True}
         return {"stopped": False, "note": "nothing was generating"}
 

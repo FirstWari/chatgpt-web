@@ -18,6 +18,7 @@ def main() -> int:
     ap.add_argument("--out", required=True)
     ap.add_argument("--wait", type=int, default=25)
     ap.add_argument("--click", default=None, help="optional selector to click after load (e.g. turnstile box)")
+    ap.add_argument("--human", action="store_true", help="click via the humanize engine (Bezier path, Fitts timing)")
     a = ap.parse_args()
     out = Path(a.out)
     out.mkdir(parents=True, exist_ok=True)
@@ -35,7 +36,13 @@ def main() -> int:
         if a.click:
             try:
                 page.wait_for_selector(a.click, timeout=15000)
-                page.click(a.click)
+                if a.human:
+                    import sys
+                    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+                    from chatgpt_web.humanize import Human
+                    Human(page, out).click_locator(page.locator(a.click).first)
+                else:
+                    page.click(a.click)
             except Exception as e:  # noqa: BLE001
                 print("click failed:", e)
         time.sleep(a.wait)

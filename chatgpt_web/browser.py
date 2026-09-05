@@ -10,11 +10,12 @@ import time
 from contextlib import contextmanager
 from pathlib import Path
 
-from playwright.sync_api import Page, BrowserContext, sync_playwright, Error as PWError
+from .pw import Page, BrowserContext, sync_playwright, Error as PWError, ENGINE
 
 from . import selectors as S
 from .config import Config
 from .errors import CgError
+from .humanize import Human
 
 
 CONV_RE = re.compile(r"/c/([0-9a-fA-F-]{8,})")
@@ -82,6 +83,9 @@ class Session:
         except Exception:  # noqa: BLE001
             pass
 
+    def human(self, page: Page) -> Human:
+        return Human(page, self.cfg.state_dir)
+
     # ---- tabs -----------------------------------------------------------
     def chatgpt_pages(self) -> list[Page]:
         return [p for p in self.ctx.pages if p.url.startswith(self.cfg.base_url)]
@@ -119,10 +123,7 @@ class Session:
     def new_page(self) -> Page:
         page = self.ctx.new_page()
         page.set_default_timeout(15000)
-        try:
-            page.set_viewport_size({"width": 1400, "height": 1000})
-        except PWError:
-            pass
+        # No viewport override: keep innerWidth/outerWidth consistent with the real window.
         return page
 
     def goto(self, page: Page, url: str):

@@ -6,7 +6,7 @@ import re
 import time
 from pathlib import Path
 
-from playwright.sync_api import Page, Error as PWError
+from .pw import Page, Error as PWError
 
 from . import selectors as S
 from .browser import Session, first, visible
@@ -48,20 +48,20 @@ def ensure_model(sess: Session, page: Page, slug: str, label: str, strict: bool)
             note.append(f"?model= nav failed: {e}")
     picker = first(page, S.MODEL_SWITCHER)
     if picker:
+        human = sess.human(page)
         try:
-            picker.click()
+            human.click_locator(picker)
             page.wait_for_selector('[role="menu"], [role="listbox"]', timeout=8000)
             items = page.get_by_role("menuitem")
             target = items.filter(has_text=re.compile(re.escape(label or slug), re.I))
             if target.count() == 0:
                 more = items.filter(has_text=re.compile(r"more models|legacy|diğer modeller|other models", re.I))
                 if more.count():
-                    more.first.hover()
-                    more.first.click()
+                    human.click_locator(more.first)
                     time.sleep(0.8)
                     target = page.get_by_role("menuitem").filter(has_text=re.compile(re.escape(label or slug), re.I))
             if target.count():
-                target.first.click()
+                human.click_locator(target.first)
                 time.sleep(1.0)
                 cur = current_model_label(page)
                 if cur and want in cur.lower():
@@ -256,16 +256,20 @@ def read_assistant(page: Page, index: int = -1) -> dict:
 
 
 # ---- send / wait -------------------------------------------------------------
+TYPE_MAX_CHARS = 400  # shorter texts are typed key by key, longer ones are pasted (humans paste long prompts)
+
+
 def send_text(sess: Session, page: Page, text: str) -> None:
     dismiss_dialogs(page)
     box = first(page, S.PROMPT_BOX)
     if not box:
         raise CgError("SESSION_LOST", "no prompt box", screenshot=sess.shot(page, "nobox"))
-    box.click()
-    try:
-        page.keyboard.insert_text(text)
-    except PWError:
-        box.fill(text)
+    human = sess.human(page)
+    human.click_locator(box)
+    if len(text) <= TYPE_MAX_CHARS:
+        human.type_text(text)
+    else:
+        human.paste_text(text)
     time.sleep(0.3)
     try:
         got = len(box.inner_text())
@@ -277,8 +281,7 @@ def send_text(sess: Session, page: Page, text: str) -> None:
     send = first(page, S.SEND_BUTTON)
     try:
         if send:
-            send.wait_for(state="visible", timeout=10000)
-            send.click()
+            human.click_locator(send, timeout=10000)
         else:
             page.keyboard.press("Enter")
     except PWError:
@@ -339,7 +342,7 @@ def wait_reply(sess: Session, page: Page, baseline_assistant: int, timeout_sec: 
             cont = first(page, S.CONTINUE_BUTTON)
             try:
                 if cont and cont.is_visible():
-                    cont.click()
+                    sess.human(page).click_locator(cont)
                     stable_since = None
                     time.sleep(2)
                     continue
@@ -356,7 +359,7 @@ def wait_reply(sess: Session, page: Page, baseline_assistant: int, timeout_sec: 
                 if regen and not regenerated:
                     regenerated = True
                     try:
-                        regen.click()
+                        sess.human(page).click_locator(regen)
                         stable_since = None
                         time.sleep(3)
                         continue

@@ -5,7 +5,7 @@ import json
 import re
 import time
 
-from playwright.sync_api import Page, Error as PWError
+from .pw import Page, Error as PWError
 
 from . import selectors as S
 from .browser import Session, first
@@ -61,15 +61,16 @@ def find_project(sess: Session, page: Page, name: str, create: bool = True) -> s
         # Row layout (2026-09): <li><div class="group/project-unfurl-row"> [link/name] [options button] </div></li>
         # Clicking the options button opens a menu, so click the left part of the row instead.
         row = opts.first.locator("xpath=ancestor::*[contains(@class,'project-unfurl-row') or self::li][1]")
+        human = sess.human(page)
         clicked = False
         try:
             if row.count():
-                row.first.click(position={"x": 40, "y": 14})
+                human.click_locator(row.first, x_frac=0.25)  # left part: the name, not the options button
                 clicked = True
         except PWError:
             clicked = False
         if not clicked:
-            page.get_by_text(name, exact=True).first.click()
+            human.click_locator(page.get_by_text(name, exact=True).first)
         _wait_project_url(page, sess)
         root = _project_root(page.url)
         cache = _cache_read(sess)
@@ -85,16 +86,18 @@ def create_project(sess: Session, page: Page, name: str) -> str:
     btn = first(page, S.NEW_PROJECT_BUTTON)
     if not btn:
         raise CgError("PROJECT_NOT_FOUND", "no 'New project' button", screenshot=sess.shot(page, "project"))
-    btn.click()
+    human = sess.human(page)
+    human.click_locator(btn)
     try:
         # The "Create project" dialog is not always role=dialog; take the newest visible text input.
         page.get_by_text(re.compile(r"^(Create project|Proje oluştur)$")).first.wait_for(timeout=10000)
         box = page.locator("input:visible").last
         box.wait_for(timeout=10000)
-        box.fill(name)
+        human.click_locator(box)
+        human.type_text(name)
         create = page.get_by_role("button", name=re.compile(r"^(Create project|Proje oluştur|Create)$")).first
         create.wait_for(state="visible", timeout=5000)
-        create.click()
+        human.click_locator(create)
         _wait_project_url(page, sess)
     except PWError as e:
         raise CgError("PROJECT_NOT_FOUND", f"could not create project {name!r}: {e}", screenshot=sess.shot(page, "project"))

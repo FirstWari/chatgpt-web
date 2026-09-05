@@ -124,16 +124,24 @@ def attach_files(sess: Session, page: Page, paths: list[Path]) -> list[str]:
         inp.set_input_files([str(p) for p in paths])
     except PWError as e:
         raise CgError("UPLOAD_UNAVAILABLE", f"set_input_files failed: {e}", screenshot=sess.shot(page, "upload"))
-    # wait until every file name is visible in the composer, nothing says "Uploading", send is enabled
+    # wait until every file is visible in the composer, nothing says "Uploading", send is enabled
     names = [p.name for p in paths]
+    img_names = [n for n in names if n.lower().rsplit(".", 1)[-1] in ("jpg", "jpeg", "png", "gif", "webp")]
+    doc_names = [n for n in names if n not in img_names]
     end = time.time() + sess.cfg.upload_timeout_sec
     form = page.locator("form").first
+    settled_since = None
     while time.time() < end:
+        dismiss_dialogs(page)
         try:
             txt = form.inner_text() if form.count() else ""
         except PWError:
             txt = ""
-        present = sum(1 for n in names if n in txt or n.rsplit(".", 1)[0] in txt)
+        docs_ok = sum(1 for n in doc_names if n in txt or n.rsplit(".", 1)[0] in txt) >= len(doc_names)
+        try:
+            imgs_ok = form.locator("img").count() >= len(img_names)
+        except PWError:
+            imgs_ok = not img_names
         uploading = bool(re.search(S.UPLOADING_RE, txt, re.I)) or page.locator('form [role="progressbar"]').count() > 0
         send = first(page, S.SEND_BUTTON)
         send_ok = False
@@ -141,13 +149,50 @@ def attach_files(sess: Session, page: Page, paths: list[Path]) -> list[str]:
             send_ok = bool(send and send.is_enabled())
         except PWError:
             pass
-        if present >= len(names) and not uploading and send_ok:
-            return names
+        if docs_ok and imgs_ok and not uploading and send_ok:
+            # give thumbnails/processing 3 more seconds to settle
+            settled_since = settled_since or time.time()
+            if time.time() - settled_since >= 3:
+                return names
+        else:
+            settled_since = None
         if re.search(r"(can't upload|cannot upload|not supported|desteklenmiyor|yükleyemez)", txt, re.I):
             raise CgError("UPLOAD_UNAVAILABLE", "ChatGPT rejected an attachment", screenshot=sess.shot(page, "upload"))
         time.sleep(1.0)
     raise CgError("UPLOAD_UNAVAILABLE", f"upload did not settle in {sess.cfg.upload_timeout_sec}s",
                   screenshot=sess.shot(page, "upload"))
+
+
+DIALOG_DISMISS_RE = re.compile(r"(added to chat only|storage space|depolama|sohbete eklendi|Got it|Tamam)", re.I)
+
+
+def dismiss_dialogs(page: Page) -> list[str]:
+    """Close informational modals (e.g. free-plan 'File added to chat only'). Returns their titles."""
+    seen: list[str] = []
+    try:
+        dialogs = page.locator('[role="dialog"], [role="alertdialog"]')
+        for i in range(dialogs.count()):
+            d = dialogs.nth(i)
+            if not d.is_visible():
+                continue
+            txt = (d.inner_text() or "").strip()
+            if not DIALOG_DISMISS_RE.search(txt):
+                continue
+            seen.append(txt.split("\n")[0][:80])
+            closed = False
+            for sel in ('button[aria-label="Close"]', 'button[aria-label="Kapat"]', 'button:has-text("Got it")',
+                        'button:has-text("Tamam")', 'button:has-text("OK")'):
+                b = d.locator(sel)
+                if b.count():
+                    b.first.click()
+                    closed = True
+                    break
+            if not closed:
+                page.keyboard.press("Escape")
+            time.sleep(0.5)
+    except PWError:
+        pass
+    return seen
 
 
 # ---- turns -----------------------------------------------------------------
@@ -204,6 +249,7 @@ def read_assistant(page: Page, index: int = -1) -> dict:
 
 # ---- send / wait -------------------------------------------------------------
 def send_text(sess: Session, page: Page, text: str) -> None:
+    dismiss_dialogs(page)
     box = first(page, S.PROMPT_BOX)
     if not box:
         raise CgError("SESSION_LOST", "no prompt box", screenshot=sess.shot(page, "nobox"))

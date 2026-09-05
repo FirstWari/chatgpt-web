@@ -37,8 +37,18 @@ def main() -> int:
         try:
             frame_el.wait_for(state="attached", timeout=20000)  # aria-hidden makes it "hidden" for Playwright
             time.sleep(2.5)  # let the widget decide between managed/interactive
-            box = frame_el.bounding_box()
-            result["note"] = f"container box={box}"
+            # The visible widget lives in a closed shadow root; measure its host element instead
+            # (Patchright runs evaluate in an isolated world, so this is not observable by the page).
+            box = page.evaluate("""() => {
+                const host = document.querySelector('.cf-turnstile, [data-sitekey], #cf-turnstile, [id^=cf-turnstile]');
+                const el = host || document.querySelector('iframe[title*="Cloudflare"]');
+                if (!el) return null;
+                const r = el.getBoundingClientRect();
+                return {x: r.x, y: r.y, width: r.width, height: r.height, tag: el.tagName, id: el.id, cls: el.className};
+            }""")
+            result["note"] = f"host box={box}"
+            if box and box["width"] < 50:
+                box = None
             if box:
                 # checkbox sits at the left edge of the widget (~28px from left, vertically centred)
                 x = box["x"] + 28 + human.rng.uniform(-3, 3)

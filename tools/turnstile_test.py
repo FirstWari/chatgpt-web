@@ -40,11 +40,13 @@ def main() -> int:
             # The visible widget lives in a closed shadow root; measure its host element instead
             # (Patchright runs evaluate in an isolated world, so this is not observable by the page).
             box = page.evaluate("""() => {
-                const host = document.querySelector('.cf-turnstile, [data-sitekey], #cf-turnstile, [id^=cf-turnstile]');
-                const el = host || document.querySelector('iframe[title*="Cloudflare"]');
-                if (!el) return null;
-                const r = el.getBoundingClientRect();
-                return {x: r.x, y: r.y, width: r.width, height: r.height, tag: el.tagName, id: el.id, cls: el.className};
+                // Turnstile's normal widget is 300x65 inside a closed shadow root: find the host by geometry.
+                for (const el of document.querySelectorAll('div')) {
+                    const r = el.getBoundingClientRect();
+                    if (r.width >= 290 && r.width <= 310 && r.height >= 60 && r.height <= 70 && r.y > 0)
+                        return {x: r.x, y: r.y, width: r.width, height: r.height, id: el.id};
+                }
+                return null;
             }""")
             result["note"] = f"host box={box}"
             if box and box["width"] < 50:

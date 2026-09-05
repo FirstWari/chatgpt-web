@@ -6,6 +6,7 @@ export LORE_CDP_URL="${LORE_CDP_URL:-http://127.0.0.1:9222}"
 export LORE_USER_AGENT="${LORE_USER_AGENT:-Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Safari/537.36}"
 export LORE_POT_BASE_URL="${LORE_POT_BASE_URL:-http://127.0.0.1:4416}"
 export LORE_IMPERSONATE="${LORE_IMPERSONATE:-chrome}"
+export LORE_YT_REMOTE_COMPONENTS="${LORE_YT_REMOTE_COMPONENTS:-1}"  # EJS n-challenge solver (remote JS); needed for YouTube 720p
 export LORE_YT_DAILY_MAX="${LORE_YT_DAILY_MAX:-12}"
 export LORE_STATE_DIR="${LORE_STATE_DIR:-$HOME/work/lore-engine/state}"
 # YouTube cookies (throwaway account only) are used only if the private file exists.
@@ -16,7 +17,7 @@ cd "$HOME/work/lore-engine" || exit 1
 run() { flock -s "$HOME/work/net.lock" .venv/bin/python lore.py "$@"; }
 err=$(mktemp)
 out=$(run "$@" 2> >(tee "$err" >&2)); rc=$?
-if [ $rc -ne 0 ] && grep -qiE "not a bot|Sign in to confirm|HTTP Error 429|Too Many Requests" "$err" <<<"$out" 2>/dev/null; then
+if [ $rc -ne 0 ] && grep -qiE "not a bot|Sign in to confirm|HTTP Error 429|Too Many Requests" "$err" 2>/dev/null; then
   echo "[lore-wrapper] bot check / rate limit detected -> rotating WARP egress and retrying once" >&2
   "$HOME/work/bin/warp-rotate" >&2 || true
   sleep 15

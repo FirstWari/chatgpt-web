@@ -58,16 +58,19 @@ def find_project(sess: Session, page: Page, name: str, create: bool = True) -> s
         # names may carry a trailing space in aria-label (seen live: "Artificial Intelligence ")
         opts = page.locator(f'button[aria-label^="Open project options for {name}"]')
     if opts.count() > 0:
-        # the clickable row is the nearest ancestor with role/link/button semantics
-        row = opts.first.locator("xpath=ancestor::*[self::a or @role='button' or @role='link' or contains(@class,'__menu-item')][1]")
+        # Row layout (2026-09): <li><div class="group/project-unfurl-row"> [link/name] [options button] </div></li>
+        # Clicking the options button opens a menu, so click the left part of the row instead.
+        row = opts.first.locator("xpath=ancestor::*[contains(@class,'project-unfurl-row') or self::li][1]")
+        clicked = False
         try:
             if row.count():
-                row.first.click()
-            else:
-                opts.first.locator("xpath=..").click()
+                row.first.click(position={"x": 40, "y": 14})
+                clicked = True
         except PWError:
+            clicked = False
+        if not clicked:
             page.get_by_text(name, exact=True).first.click()
-        _wait_project_url(page)
+        _wait_project_url(page, sess)
         root = _project_root(page.url)
         cache = _cache_read(sess)
         cache[name] = root
@@ -92,7 +95,7 @@ def create_project(sess: Session, page: Page, name: str) -> str:
         create = page.get_by_role("button", name=re.compile(r"^(Create project|Proje oluştur|Create)$")).first
         create.wait_for(state="visible", timeout=5000)
         create.click()
-        _wait_project_url(page)
+        _wait_project_url(page, sess)
     except PWError as e:
         raise CgError("PROJECT_NOT_FOUND", f"could not create project {name!r}: {e}", screenshot=sess.shot(page, "project"))
     root = _project_root(page.url)
@@ -102,11 +105,23 @@ def create_project(sess: Session, page: Page, name: str) -> str:
     return root
 
 
-def _wait_project_url(page: Page, timeout: float = 15.0) -> None:
+def _wait_project_url(page: Page, sess: Session | None = None, timeout: float = 15.0) -> None:
+    """Wait until `page` shows a project URL. If ChatGPT opened the project in another tab
+    (seen after 'Create project'), adopt that URL in `page` and close the extra tab."""
     end = time.time() + timeout
     while time.time() < end:
         if PROJECT_URL_RE.match(page.url):
             return
+        if sess is not None:
+            for other in sess.ctx.pages:
+                if other is not page and PROJECT_URL_RE.match(other.url):
+                    url = _project_root(other.url)
+                    try:
+                        other.close()
+                    except PWError:
+                        pass
+                    sess.goto(page, url)
+                    return
         time.sleep(0.3)
     raise CgError("PROJECT_NOT_FOUND", f"project page did not open (url={page.url})")
 

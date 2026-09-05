@@ -141,9 +141,16 @@ def new_chat(title_hint: str | None = None, cfg: Config | None = None) -> dict:
     cfg = _cfg(cfg)
     with browser_lock(cfg.lock_file, cfg.lock_wait_sec, "new_chat"), Session(cfg) as sess:
         page = sess.new_page()
-        url = project.find_project(sess, page, cfg.project, create=True)
-        model = chat.ensure_model(sess, page, cfg.model_slug, cfg.model_label, cfg.model_strict)
-        handle = "tab:" + sess.target_id(page)
+        try:
+            url = project.find_project(sess, page, cfg.project, create=True)
+            model = chat.ensure_model(sess, page, cfg.model_slug, cfg.model_label, cfg.model_strict)
+            handle = "tab:" + sess.target_id(page)
+        except CgError:
+            try:
+                page.close()  # do not leave half-opened tabs behind
+            except Exception:  # noqa: BLE001
+                pass
+            raise
         return {"chat": handle, "chat_url": None, "project_url": url, "title_hint": title_hint,
                 "note": "send() returns the permanent chat_url after the first message", **model}
 

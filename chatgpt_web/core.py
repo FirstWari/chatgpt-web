@@ -15,6 +15,7 @@ from .browser import Session
 from .config import Config, load
 from .errors import CgError
 from .extract import Block, largest_markdown, normalize, sections, word_count
+from .browser import conv_id
 from .lock import browser_lock, net_shared_lock
 
 
@@ -35,6 +36,22 @@ def _guard(fn):
 
 def _cfg(cfg: Config | None) -> Config:
     return cfg or load()
+
+
+def _lock_path(cfg: Config, key: str) -> Path:
+    """One lock file per conversation (or per shared surface such as the project sidebar).
+    Different chats run concurrently in their own tabs; the same chat is serialised."""
+    safe = "".join(ch if ch.isalnum() or ch in "-_" else "_" for ch in key)[:80] or "misc"
+    return cfg.state_dir / f"lock-{safe}.lock"
+
+
+def _chat_key(handle: str) -> str:
+    cid = conv_id(handle)
+    if cid:
+        return "chat-" + cid
+    if handle.startswith("tab:"):
+        return "tab-" + handle[4:]
+    return "chat-" + handle
 
 
 def _check_path(cfg: Config, p: str, must_exist: bool) -> Path:
@@ -71,7 +88,7 @@ def _reply_view(reply: dict | None, fmt: str) -> dict | None:
 @_guard
 def status(cfg: Config | None = None) -> dict:
     cfg = _cfg(cfg)
-    with browser_lock(cfg.lock_file, cfg.lock_wait_sec, "status"), net_shared_lock(cfg.net_lock), Session(cfg) as sess:
+    with browser_lock(_lock_path(cfg, "misc"), cfg.lock_wait_sec, "status"), net_shared_lock(cfg.net_lock), Session(cfg) as sess:
         pages = sess.chatgpt_pages()
         page = pages[0] if pages else None
         session_state = sess.classify(page) if page else "no_tab"
@@ -97,7 +114,7 @@ def status(cfg: Config | None = None) -> dict:
 @_guard
 def doctor(cfg: Config | None = None) -> dict:
     cfg = _cfg(cfg)
-    with browser_lock(cfg.lock_file, cfg.lock_wait_sec, "doctor"), net_shared_lock(cfg.net_lock), Session(cfg) as sess:
+    with browser_lock(_lock_path(cfg, "project"), cfg.lock_wait_sec, "doctor"), net_shared_lock(cfg.net_lock), Session(cfg) as sess:
         page = sess.new_page()
         try:
             sess.goto(page, cfg.base_url + "/")
@@ -125,7 +142,7 @@ def doctor(cfg: Config | None = None) -> dict:
 @_guard
 def list_chats(query: str | None = None, limit: int = 20, cfg: Config | None = None) -> dict:
     cfg = _cfg(cfg)
-    with browser_lock(cfg.lock_file, cfg.lock_wait_sec, "list_chats"), net_shared_lock(cfg.net_lock), Session(cfg) as sess:
+    with browser_lock(_lock_path(cfg, "project"), cfg.lock_wait_sec, "list_chats"), net_shared_lock(cfg.net_lock), Session(cfg) as sess:
         page = sess.new_page()
         try:
             url = project.find_project(sess, page, cfg.project, create=False)
@@ -139,7 +156,7 @@ def list_chats(query: str | None = None, limit: int = 20, cfg: Config | None = N
 def new_chat(title_hint: str | None = None, cfg: Config | None = None) -> dict:
     """Open a fresh chat inside the project. The tab is left open; its handle is `chat`."""
     cfg = _cfg(cfg)
-    with browser_lock(cfg.lock_file, cfg.lock_wait_sec, "new_chat"), net_shared_lock(cfg.net_lock), Session(cfg) as sess:
+    with browser_lock(_lock_path(cfg, "project"), cfg.lock_wait_sec, "new_chat"), net_shared_lock(cfg.net_lock), Session(cfg) as sess:
         page = sess.new_page()
         try:
             url = project.find_project(sess, page, cfg.project, create=True)
@@ -158,7 +175,7 @@ def new_chat(title_hint: str | None = None, cfg: Config | None = None) -> dict:
 @_guard
 def open_chat(chat_url: str, cfg: Config | None = None) -> dict:
     cfg = _cfg(cfg)
-    with browser_lock(cfg.lock_file, cfg.lock_wait_sec, "open_chat"), net_shared_lock(cfg.net_lock), Session(cfg) as sess:
+    with browser_lock(_lock_path(cfg, _chat_key(chat_url)), cfg.lock_wait_sec, "open_chat"), net_shared_lock(cfg.net_lock), Session(cfg) as sess:
         page = sess.page_for_handle(chat_url)
         sess.ensure_usable(page)
         n_a, n_u = chat.assistant_count(page), chat.user_count(page)
@@ -179,7 +196,7 @@ def send(chat_handle: str, text: str, files: list[str] | None = None, wait_sec: 
     if len(paths) > cfg.max_files:
         raise CgError("INPUT", f"at most {cfg.max_files} files per message")
     wait_sec = max(0, min(int(wait_sec), cfg.max_wait_sec))
-    with browser_lock(cfg.lock_file, cfg.lock_wait_sec, "send"), net_shared_lock(cfg.net_lock), Session(cfg) as sess:
+    with browser_lock(_lock_path(cfg, _chat_key(chat_handle)), cfg.lock_wait_sec, "send"), net_shared_lock(cfg.net_lock), Session(cfg) as sess:
         page = sess.page_for_handle(chat_handle)
         sess.ensure_usable(page)
         if chat.is_generating(page):
@@ -213,7 +230,7 @@ def wait(chat_handle: str, timeout_sec: int = 300, reply_format: str = "largest_
          cfg: Config | None = None) -> dict:
     cfg = _cfg(cfg)
     timeout_sec = max(1, min(int(timeout_sec), cfg.max_wait_sec))
-    with browser_lock(cfg.lock_file, cfg.lock_wait_sec, "wait"), net_shared_lock(cfg.net_lock), Session(cfg) as sess:
+    with browser_lock(_lock_path(cfg, _chat_key(chat_handle)), cfg.lock_wait_sec, "wait"), net_shared_lock(cfg.net_lock), Session(cfg) as sess:
         page = sess.page_for_handle(chat_handle)
         sess.ensure_usable(page)
         n = chat.assistant_count(page)
@@ -229,7 +246,7 @@ def wait(chat_handle: str, timeout_sec: int = 300, reply_format: str = "largest_
 @_guard
 def get_reply(chat_handle: str, index: int = -1, reply_format: str = "text", cfg: Config | None = None) -> dict:
     cfg = _cfg(cfg)
-    with browser_lock(cfg.lock_file, cfg.lock_wait_sec, "get_reply"), net_shared_lock(cfg.net_lock), Session(cfg) as sess:
+    with browser_lock(_lock_path(cfg, _chat_key(chat_handle)), cfg.lock_wait_sec, "get_reply"), net_shared_lock(cfg.net_lock), Session(cfg) as sess:
         page = sess.page_for_handle(chat_handle)
         sess.ensure_usable(page)
         r = chat.read_assistant(page, index)
@@ -242,7 +259,7 @@ def save_reply(chat_handle: str, path: str, index: int = -1, reply_format: str =
                cfg: Config | None = None) -> dict:
     cfg = _cfg(cfg)
     dest = _check_path(cfg, path, False)
-    with browser_lock(cfg.lock_file, cfg.lock_wait_sec, "save_reply"), net_shared_lock(cfg.net_lock), Session(cfg) as sess:
+    with browser_lock(_lock_path(cfg, _chat_key(chat_handle)), cfg.lock_wait_sec, "save_reply"), net_shared_lock(cfg.net_lock), Session(cfg) as sess:
         page = sess.page_for_handle(chat_handle)
         sess.ensure_usable(page)
         r = chat.read_assistant(page, index)
@@ -271,7 +288,7 @@ def stop(chat_handle: str, cfg: Config | None = None) -> dict:
     cfg = _cfg(cfg)
     from .browser import first
     from . import selectors as S
-    with browser_lock(cfg.lock_file, cfg.lock_wait_sec, "stop"), net_shared_lock(cfg.net_lock), Session(cfg) as sess:
+    with browser_lock(_lock_path(cfg, _chat_key(chat_handle)), cfg.lock_wait_sec, "stop"), net_shared_lock(cfg.net_lock), Session(cfg) as sess:
         page = sess.page_for_handle(chat_handle)
         btn = first(page, S.STOP_BUTTON)
         if btn and btn.is_visible():
@@ -283,7 +300,7 @@ def stop(chat_handle: str, cfg: Config | None = None) -> dict:
 @_guard
 def close_chat(chat_handle: str, cfg: Config | None = None) -> dict:
     cfg = _cfg(cfg)
-    with browser_lock(cfg.lock_file, cfg.lock_wait_sec, "close_chat"), net_shared_lock(cfg.net_lock), Session(cfg) as sess:
+    with browser_lock(_lock_path(cfg, _chat_key(chat_handle)), cfg.lock_wait_sec, "close_chat"), net_shared_lock(cfg.net_lock), Session(cfg) as sess:
         try:
             page = sess.page_for_handle(chat_handle)
         except CgError as e:

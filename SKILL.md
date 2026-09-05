@@ -59,6 +59,14 @@ to ask and how to split the work; the tools only make the browser reliable.
 - Do not paste the transcript into any other model unless the user explicitly asks for a fallback.
 - Log nothing about the user's account; the `screenshot` path is for the user, not for you to open.
 
+## Pacing (keep the account looking human)
+
+- One conversation generating at a time; wait for `done` before the next `send`.
+- Leave at least ~20 s between two `send` calls and keep it under ~12 messages per hour.
+- Short prompts are typed key by key, long ones are pasted (both handled by the tool); do not split one prompt into many tiny messages.
+- Never run the tools in a tight loop; `wait` already polls at a human-safe rate.
+- If you see `BOT_CHECK` once, the tool has already rotated the WARP egress and retried; report it, do not hammer.
+
 ## Health check
 
 `mcp_chatgpt_doctor` → `session`, `file_input_present`, `models`, `project.url`. Also from a shell:

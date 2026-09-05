@@ -83,6 +83,23 @@ cgweb check ~/work/out/notes.md                 # words per "### BÖLÜM n"
 - ChatGPT's terms treat UI automation as a grey area; this tool uses your own account, one conversation
   at a time, with human-like pacing. Use at your own risk.
 
+## Stealth measures (measured, 2026-09)
+
+- Engine: **Patchright** over `connect_over_cdp` — no `Runtime.enable`/`Console.enable`, so Brotector and
+  rebrowser-bot-detector stay clean (plain Playwright is flagged `runtime.enabled` within 300 ms).
+- Input: `humanize.py` — cubic Bezier paths with minimum-jerk timing, Fitts-law durations
+  (MacKenzie 1991 constants), tremor, occasional overshoot; log-normal key hold/flight; typed ≤400 chars,
+  pasted above. Clicks pass `isTrusted`; the interactive Turnstile demo is solved by a humanized click.
+- Browser environment (server side, not in this repo): headful Chromium on Xvfb 1920×1080, WebGL via
+  ANGLE/SwiftShader (`--use-gl=angle --use-angle=swiftshader --enable-unsafe-swiftshader`), 200+ font
+  families, `WebRtcIPHandling=disable_non_proxied_udp` policy (no real-IP leak next to the proxy), no
+  viewport override (inner ≤ outer), consistent Linux UA/platform.
+- Network: `tools/warp-rotate` — safe WARP egress rotation (shared `net.lock`, cooldown, daily cap,
+  geo health check against Google's `location=unsupported` gate); `chatgpt-web` rotates once automatically
+  when a Cloudflare challenge does not clear.
+- Measurement tools: `tools/fpcheck_all.sh` (Brotector, rebrowser, browserscan, CreepJS, Turnstile in
+  raw/playwright/patchright modes), `tools/turnstile_test.py`, `tools/dom_dump.py`.
+
 ## Tests
 
 `pytest` covers the text layer (fence extraction, section stats). Browser behaviour is checked with

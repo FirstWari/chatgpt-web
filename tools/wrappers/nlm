@@ -1,0 +1,5 @@
+#!/bin/bash
+# notebooklm-py CLI wrapper (server): WARP egress, browser-consistent UA, shared net lock.
+export HTTP_PROXY=socks5://127.0.0.1:40000 HTTPS_PROXY=socks5://127.0.0.1:40000
+export NOTEBOOKLM_USER_AGENT="${NOTEBOOKLM_USER_AGENT:-Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Safari/537.36}"
+exec flock -s "$HOME/work/net.lock" "$HOME/work/notebooklm-py/.venv/bin/notebooklm" "$@"

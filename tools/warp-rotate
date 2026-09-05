@@ -32,18 +32,22 @@ if [ $FORCE -eq 0 ]; then
     echo "{\"ok\":false,\"reason\":\"daily quota ($DAILY_MAX) reached\"}"; exit 2
   fi
 fi
+# geo health: Google gates NotebookLM by egress location ("location=unsupported" redirect).
+geo_ok() { local loc; loc=$(curl -s -o /dev/null --max-time 15 -w "%{redirect_url}" --proxy "$PROXY" https://notebooklm.google.com/ 2>/dev/null); case "$loc" in *location=unsupported*) return 1;; *) return 0;; esac; }
+reconnect() {
+  warp-cli --accept-tos disconnect >/dev/null 2>&1; sleep 2; warp-cli --accept-tos connect >/dev/null 2>&1
+  for i in $(seq 1 20); do sleep 1; st=$(warp-cli --accept-tos status 2>/dev/null | head -1); case "$st" in *Connected*) break;; esac; done
+}
 before=$(trace)
-warp-cli --accept-tos disconnect >/dev/null 2>&1
-sleep 2
-warp-cli --accept-tos connect >/dev/null 2>&1
-for i in $(seq 1 20); do
-  sleep 1
-  st=$(warp-cli --accept-tos status 2>/dev/null | head -1)
-  case "$st" in *Connected*) break;; esac
+attempts=0; geo=bad
+while [ $attempts -lt ${WARP_ROTATE_GEO_TRIES:-4} ]; do
+  reconnect; attempts=$((attempts+1))
+  if geo_ok; then geo=ok; break; fi
+  sleep 3
 done
 after=$(trace)
 date +%s > "$STAMP_FILE"
 echo $(( $(cat "$COUNT_FILE" 2>/dev/null || echo 0) + 1 )) > "$COUNT_FILE"
 if [ -z "$after" ]; then echo "{\"ok\":false,\"reason\":\"no egress after reconnect\",\"before\":\"$before\"}"; exit 1; fi
 changed=false; [ "$before" != "$after" ] && changed=true
-echo "{\"ok\":true,\"changed\":$changed,\"before\":\"$before\",\"after\":\"$after\"}"
+echo "{\"ok\":true,\"changed\":$changed,\"geo\":\"$geo\",\"attempts\":$attempts,\"before\":\"$before\",\"after\":\"$after\"}"

@@ -244,7 +244,15 @@ def read_assistant(page: Page, index: int = -1) -> dict:
         blocks = []
     if not blocks:
         blocks = blocks_from_text(text)
-    return {"index": i, "text": text, "blocks": [b.to_dict() for b in blocks], "words": len(text.split())}
+    # ChatGPT renders some code blocks twice in the DOM (e.g. a hidden copy); keep one per body
+    seen: set[str] = set()
+    unique: list[Block] = []
+    for b in blocks:
+        key = b.text.strip()
+        if key and key not in seen:
+            seen.add(key)
+            unique.append(b)
+    return {"index": i, "text": text, "blocks": [b.to_dict() for b in unique], "words": len(text.split())}
 
 
 # ---- send / wait -------------------------------------------------------------

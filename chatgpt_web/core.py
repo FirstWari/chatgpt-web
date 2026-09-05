@@ -201,6 +201,10 @@ def send(chat_handle: str, text: str, files: list[str] | None = None, wait_sec: 
             res = chat.wait_reply(sess, page, baseline, wait_sec)
             out.update({"status": res["status"], "elapsed_sec": res["elapsed_sec"],
                         "reply": _reply_view(res["reply"], reply_format)})
+        # the permanent URL may only appear once the reply starts streaming
+        if "/c/" in page.url:
+            out["chat_url"] = page.url.split("?")[0]
+            out["chat"] = out["chat_url"]
         return out
 
 

@@ -17,6 +17,15 @@ from .config import Config
 from .errors import CgError
 
 
+CONV_RE = re.compile(r"/c/([0-9a-fA-F-]{8,})")
+
+
+def conv_id(url: str) -> str | None:
+    """Conversation uuid from any chatgpt.com URL form (/c/<id> or /g/g-p-.../c/<id>)."""
+    m = CONV_RE.search(url or "")
+    return m.group(1).lower() if m else None
+
+
 def first(page: Page, sels: list[str]):
     """First locator in the fallback list that exists on the page (count>0), else None."""
     for s in sels:
@@ -98,8 +107,10 @@ class Session:
         url = handle.split("#")[0].rstrip("/")
         if not url.startswith(self.cfg.base_url):
             raise CgError("INPUT", f"handle must be a {self.cfg.base_url} URL or tab:<id>, got {handle!r}")
+        cid = conv_id(url)
         for p in self.ctx.pages:
-            if p.url.split("?")[0].rstrip("/") == url:
+            pu = p.url.split("?")[0].rstrip("/")
+            if pu == url or (cid and conv_id(pu) == cid):
                 return p
         page = self.new_page()
         self.goto(page, url)

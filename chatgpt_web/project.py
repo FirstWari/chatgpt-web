@@ -135,9 +135,16 @@ def _project_root(url: str) -> str:
 def list_chats(sess: Session, page: Page, project_url: str, query: str | None, limit: int) -> list[dict]:
     if _project_root(page.url) != project_url:
         sess.goto(page, project_url)
-    time.sleep(1.0)
+    time.sleep(1.5)
     seen: dict[str, str] = {}
-    for a in page.locator("main a[href^='/c/'], a[href^='/c/']").all():
+    pid = re.search(r"g-p-([A-Za-z0-9]+)", project_url)
+    pid = pid.group(1) if pid else ""
+    # Project chats are listed in <main> with project-scoped hrefs (/g/g-p-<id>-<slug>/c/<uuid>);
+    # the sidebar (nav/aside) lists *all* chats, so it is excluded.
+    candidates = page.locator(f"main a[href*='g-p-{pid}'][href*='/c/']").all() if pid else []
+    if not candidates:
+        candidates = page.locator("main a[href*='/c/']").all()
+    for a in candidates:
         try:
             href = a.get_attribute("href") or ""
             title = (a.inner_text() or "").strip().split("\n")[0]

@@ -1,0 +1,49 @@
+#!/bin/bash
+# warp-rotate — get a fresh Cloudflare WARP egress IP, safely.
+#  * refuses while another tool holds the shared net lock (chatgpt-web / nlm / lore in flight)
+#  * 10-minute cooldown, max 6 rotations per day (state in $STATE_DIR)
+#  * verifies the new egress via cdn-cgi/trace and prints one JSON line
+# Usage: warp-rotate [--force]   exit 0 = rotated, 2 = refused (lock/cooldown/quota), 1 = failed
+set -u
+STATE_DIR="${WARP_ROTATE_STATE:-$HOME/work/chatgpt-web}"
+NET_LOCK="${NET_LOCK:-$HOME/work/net.lock}"
+PROXY="${WARP_PROXY:-socks5h://127.0.0.1:40000}"
+COOLDOWN=${WARP_ROTATE_COOLDOWN_SEC:-600}
+DAILY_MAX=${WARP_ROTATE_DAILY_MAX:-6}
+FORCE=0; [ "${1:-}" = "--force" ] && FORCE=1
+mkdir -p "$STATE_DIR"
+STAMP_FILE="$STATE_DIR/warp-rotate.last"
+COUNT_FILE="$STATE_DIR/warp-rotate.$(date +%Y%m%d).count"
+
+trace() { curl -s --max-time 15 --proxy "$PROXY" https://www.cloudflare.com/cdn-cgi/trace 2>/dev/null | awk -F= '/^(ip|loc|colo|warp)=/{printf "%s=%s ", $1, $2}'; }
+
+# refuse while a browser/network operation is running (non-blocking shared-lock probe)
+exec 9>>"$NET_LOCK"
+if ! flock -n 9; then
+  echo "{\"ok\":false,\"reason\":\"net.lock held (a tool is using the network)\"}"; exit 2
+fi
+if [ $FORCE -eq 0 ]; then
+  now=$(date +%s); last=$(cat "$STAMP_FILE" 2>/dev/null || echo 0)
+  if [ $((now - last)) -lt "$COOLDOWN" ]; then
+    echo "{\"ok\":false,\"reason\":\"cooldown\",\"retry_in_sec\":$((COOLDOWN - now + last))}"; exit 2
+  fi
+  count=$(cat "$COUNT_FILE" 2>/dev/null || echo 0)
+  if [ "$count" -ge "$DAILY_MAX" ]; then
+    echo "{\"ok\":false,\"reason\":\"daily quota ($DAILY_MAX) reached\"}"; exit 2
+  fi
+fi
+before=$(trace)
+warp-cli --accept-tos disconnect >/dev/null 2>&1
+sleep 2
+warp-cli --accept-tos connect >/dev/null 2>&1
+for i in $(seq 1 20); do
+  sleep 1
+  st=$(warp-cli --accept-tos status 2>/dev/null | head -1)
+  case "$st" in *Connected*) break;; esac
+done
+after=$(trace)
+date +%s > "$STAMP_FILE"
+echo $(( $(cat "$COUNT_FILE" 2>/dev/null || echo 0) + 1 )) > "$COUNT_FILE"
+if [ -z "$after" ]; then echo "{\"ok\":false,\"reason\":\"no egress after reconnect\",\"before\":\"$before\"}"; exit 1; fi
+changed=false; [ "$before" != "$after" ] && changed=true
+echo "{\"ok\":true,\"changed\":$changed,\"before\":\"$before\",\"after\":\"$after\"}"

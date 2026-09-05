@@ -22,6 +22,26 @@ except ImportError:  # Windows: best-effort via msvcrt
 
 
 @contextmanager
+def net_shared_lock(path: Path | None):
+    """Shared (read) lock on the network lock file: many tools may hold it at once,
+    warp-rotate needs it exclusively and therefore waits/refuses while any tool works."""
+    if path is None or fcntl is None:
+        yield
+        return
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fh = open(path, "a+")
+    try:
+        fcntl.flock(fh.fileno(), fcntl.LOCK_SH)
+        yield
+    finally:
+        try:
+            fcntl.flock(fh.fileno(), fcntl.LOCK_UN)
+        except OSError:
+            pass
+        fh.close()
+
+
+@contextmanager
 def browser_lock(path: Path, wait_sec: int = 120, label: str = ""):
     path.parent.mkdir(parents=True, exist_ok=True)
     fh = open(path, "a+")

@@ -27,6 +27,24 @@ def conv_id(url: str) -> str | None:
     return m.group(1).lower() if m else None
 
 
+def rotate_warp(cfg: Config) -> dict:
+    """Run the shared `warp-rotate` helper. We hold the net lock ourselves, so point the
+    helper at a private lock file; its cooldown/daily quota still apply."""
+    import json
+    import os
+    import shutil
+    import subprocess
+    exe = shutil.which("warp-rotate") or str(Path.home() / "work" / "bin" / "warp-rotate")
+    if not Path(exe).exists():
+        return {"ok": False, "reason": "warp-rotate not installed"}
+    env = dict(os.environ, NET_LOCK=str(cfg.state_dir / "self-net.lock"))
+    try:
+        out = subprocess.run([exe], capture_output=True, text=True, timeout=90, env=env).stdout.strip().splitlines()
+        return json.loads(out[-1]) if out else {"ok": False, "reason": "no output"}
+    except Exception as e:  # noqa: BLE001
+        return {"ok": False, "reason": f"{type(e).__name__}: {e}"}
+
+
 def first(page: Page, sels: list[str]):
     """First locator in the fallback list that exists on the page (count>0), else None."""
     for s in sels:
@@ -171,13 +189,19 @@ class Session:
         """Raise the right CgError unless the page is a usable, logged-in chat page."""
         state = self.classify(page)
         if state == "cloudflare":
-            for _ in range(9):
-                time.sleep(5)
-                if self.classify(page) != "cloudflare":
-                    break
-            else:
-                raise CgError("BOT_CHECK", "Cloudflare challenge did not clear", screenshot=self.shot(page, "botcheck"))
-            state = self.classify(page)
+            state = self._wait_challenge(page)
+            if state == "cloudflare":
+                # one automatic WARP egress rotation, then reload and wait once more
+                rot = rotate_warp(self.cfg)
+                if rot.get("ok"):
+                    try:
+                        page.reload(wait_until="domcontentloaded", timeout=self.cfg.nav_timeout_ms)
+                    except PWError:
+                        pass
+                    state = self._wait_challenge(page)
+                if state == "cloudflare":
+                    raise CgError("BOT_CHECK", "Cloudflare challenge did not clear (after WARP rotation)",
+                                  screenshot=self.shot(page, "botcheck"), warp_rotate=rot)
         if state == "unknown":
             # SPA still hydrating: give it a moment
             try:
@@ -189,6 +213,15 @@ class Session:
             raise CgError("SESSION_LOST", f"chatgpt.com session state: {state}", screenshot=self.shot(page, "session"))
         if self.rate_limited(page):
             raise CgError("RATE_LIMIT", "ChatGPT reports a usage limit", screenshot=self.shot(page, "ratelimit"))
+        return state
+
+    def _wait_challenge(self, page: Page, rounds: int = 9) -> str:
+        state = "cloudflare"
+        for _ in range(rounds):
+            time.sleep(5)
+            state = self.classify(page)
+            if state != "cloudflare":
+                break
         return state
 
     # ---- debugging -------------------------------------------------------

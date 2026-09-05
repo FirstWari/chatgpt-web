@@ -37,6 +37,7 @@ class Config:
     state_dir: Path = field(default_factory=lambda: Path(_env("CHATGPT_STATE_DIR", str(Path.home() / "work" / "chatgpt-web"))))
     debug_dir: Path | None = None
     lock_file: Path | None = None
+    net_lock: Path | None = None
     projects_file: Path | None = None
     # Timing
     poll_sec: float = field(default_factory=lambda: float(_env("CHATGPT_POLL_SEC", "4")))
@@ -53,6 +54,7 @@ class Config:
         self.debug_dir = self.debug_dir or Path(_env("CHATGPT_DEBUG_DIR", str(self.state_dir / "debug")))
         self.lock_file = self.lock_file or Path(_env("CHATGPT_LOCK", str(self.state_dir / "browser.lock")))
         self.projects_file = self.projects_file or self.state_dir / "projects.json"
+        self.net_lock = self.net_lock or Path(_env("NET_LOCK", str(self.work_dir / "net.lock")))
         for d in (self.state_dir, self.debug_dir):
             try:
                 d.mkdir(parents=True, exist_ok=True)

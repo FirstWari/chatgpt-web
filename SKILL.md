@@ -25,7 +25,7 @@ to ask and how to split the work; the tools only make the browser reliable.
 | `status` | session state, current model label, configured project, open chat tabs. Call first. |
 | `new_chat` | new conversation inside the project, model selected. Returns `chat` = `tab:<id>` until the first message. |
 | `list_chats` / `open_chat` | find and continue an existing conversation (`https://chatgpt.com/c/...`). |
-| `send(chat, text, files?, wait_sec?)` | send a message; `files` must be under `/home/hermes/work`; max 10. Returns the permanent `chat_url`. |
+| `send(chat, text, files?, wait_sec?)` | send a message; `files` must be under the work dir (the lecture-results dir); max 10. Returns the permanent `chat_url`. |
 | `wait(chat, timeout_sec<=900)` | poll until the newest reply is finished. If it returns `status: generating`, call it again. |
 | `get_reply` / `save_reply(chat, path)` | read the reply, or write it to a file without pulling the whole text into context. `reply_format=largest_markdown` extracts the biggest ```markdown block. |
 | `stop`, `close_chat`, `check_file`, `doctor` | stop generation, close the tab, section/word stats of a saved file, health check. |
@@ -45,7 +45,7 @@ to ask and how to split the work; the tools only make the browser reliable.
 ## Rules
 
 - Never open chatgpt.com / openai.com with the browser tool or curl. Only `mcp_chatgpt_*` may use that session.
-- Files you attach or write must be under `/home/hermes/work` (snap Chromium cannot read hidden dirs; this also bounds what you touch).
+- Files you attach or write must be under the configured work dir (the lecture-results dir, e.g. `/home/hermes/work/lore-engine/results`). This is deliberately NOT the whole `~/work`: it keeps `save_reply`/`send` away from code, venvs and cookie files even if a transcript tries to redirect them.
 - One generation per conversation at a time. Locks are per chat; `LOCKED` means wait a few seconds and retry the same chat.
 - Errors come back as `{ok:false, error:CODE, message, screenshot}`. Meaning and what to do:
   - `SESSION_LOST` → "ChatGPT girişi düştü, noVNC ile tekrar gir" (tunnel: `ssh -N -L 6080:127.0.0.1:6080 ubuntu@<server>` → http://localhost:6080/vnc.html).

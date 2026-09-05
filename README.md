@@ -40,7 +40,7 @@ mcp_servers:
       CHATGPT_PROJECT: "Ders Notları"
       CHATGPT_MODEL_LABEL: "Pro"        # substring expected in the model picker; empty = don't touch the model
       CHATGPT_MODEL_SLUG: ""            # optional ?model= slug
-      CHATGPT_WORK_DIR: "/home/hermes/work"
+      CHATGPT_WORK_DIR: "/home/hermes/work/lore-engine/results"   # data-only: never the tool/venv/cookie root
     timeout: 900
     connect_timeout: 60
 ```
@@ -55,7 +55,7 @@ Claude Desktop / Claude Code / Codex use the same `command`/`args`/`env` shape i
 | `CHATGPT_CDP_URL` | `http://127.0.0.1:9222` | CDP endpoint |
 | `CHATGPT_PROJECT` | `Ders Notları` | Project name in the sidebar |
 | `CHATGPT_MODEL_LABEL` / `_SLUG` | empty | Model to select; `CHATGPT_MODEL_STRICT=1` turns a mismatch into an error |
-| `CHATGPT_WORK_DIR` | `~/work` | Only files under here may be attached or written |
+| `CHATGPT_WORK_DIR` | `~/work` | Only files under here may be attached (`send`) or written (`save_reply`). **Set it to a data-only dir (e.g. the lecture-results dir), never a directory that also contains code, venvs or cookie files** — it is the trust boundary for a prompt-injected reply. |
 | `CHATGPT_STATE_DIR` | `~/work/chatgpt-web` | lock, `projects.json`, `debug/` screenshots |
 | `CHATGPT_STABLE_SEC` | `20` | Reply must be unchanged this long (and show a Copy button) to count as finished |
 | `CHATGPT_MAX_WAIT_SEC` | `900` | Upper bound for one `wait`/`send --wait` call |

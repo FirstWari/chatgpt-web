@@ -31,12 +31,14 @@ def main() -> int:
         page.goto(a.url, wait_until="domcontentloaded", timeout=60000)
         human = Human(page, out)
         human.think(1500, 0.3)
-        frame_el = page.locator('iframe[src*="challenges.cloudflare.com"]').first
-        result = {"clicked": False, "token": None, "text": ""}
+        # Turnstile renders its iframe inside a *closed* shadow root, so target the host container.
+        frame_el = page.locator('.cf-turnstile, [data-sitekey], #cf-turnstile, iframe[src*="challenges.cloudflare.com"]').first
+        result = {"clicked": False, "token": None, "text": "", "note": ""}
         try:
             frame_el.wait_for(state="visible", timeout=20000)
             time.sleep(2.5)  # let the widget decide between managed/interactive
             box = frame_el.bounding_box()
+            result["note"] = f"container box={box}"
             if box:
                 # checkbox sits at the left edge of the widget (~28px from left, vertically centred)
                 x = box["x"] + 28 + human.rng.uniform(-3, 3)
@@ -48,7 +50,7 @@ def main() -> int:
                 page.mouse.up()
                 result["clicked"] = True
         except Exception as e:  # noqa: BLE001
-            result["text"] = f"iframe wait failed: {e}"
+            result["note"] = f"container wait failed: {e}"
         deadline = time.time() + a.wait
         while time.time() < deadline:
             try:

@@ -84,10 +84,13 @@ def create_project(sess: Session, page: Page, name: str) -> str:
         raise CgError("PROJECT_NOT_FOUND", "no 'New project' button", screenshot=sess.shot(page, "project"))
     btn.click()
     try:
-        box = page.locator('[role="dialog"] input, [role="dialog"] [contenteditable="true"]').first
+        # The "Create project" dialog is not always role=dialog; take the newest visible text input.
+        page.get_by_text(re.compile(r"^(Create project|Proje oluştur)$")).first.wait_for(timeout=10000)
+        box = page.locator("input:visible").last
         box.wait_for(timeout=10000)
         box.fill(name)
-        create = page.locator('[role="dialog"] button:has-text("Create"), [role="dialog"] button:has-text("Oluştur")').first
+        create = page.get_by_role("button", name=re.compile(r"^(Create project|Proje oluştur|Create)$")).first
+        create.wait_for(state="visible", timeout=5000)
         create.click()
         _wait_project_url(page)
     except PWError as e:

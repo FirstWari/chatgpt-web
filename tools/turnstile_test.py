@@ -32,10 +32,10 @@ def main() -> int:
         human = Human(page, out)
         human.think(1500, 0.3)
         # Turnstile renders its iframe inside a *closed* shadow root, so target the host container.
-        frame_el = page.locator('.cf-turnstile, [data-sitekey], #cf-turnstile, iframe[src*="challenges.cloudflare.com"]').first
+        frame_el = page.locator('iframe[title*="Cloudflare security challenge"], iframe[src*="challenges.cloudflare.com"]').first
         result = {"clicked": False, "token": None, "text": "", "note": ""}
         try:
-            frame_el.wait_for(state="visible", timeout=20000)
+            frame_el.wait_for(state="attached", timeout=20000)  # aria-hidden makes it "hidden" for Playwright
             time.sleep(2.5)  # let the widget decide between managed/interactive
             box = frame_el.bounding_box()
             result["note"] = f"container box={box}"

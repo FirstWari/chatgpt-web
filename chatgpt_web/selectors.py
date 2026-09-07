@@ -10,6 +10,7 @@ SEND_BUTTON = ['button[data-testid="send-button"]', 'button[aria-label="Send pro
 STOP_BUTTON = ['button[data-testid="stop-button"]', 'button[aria-label="Stop generating"]', 'button[aria-label="Stop streaming"]']
 COMPOSER_PLUS = ['button[data-testid="composer-plus-btn"]', 'button[aria-label="Add files and more"]', 'button[aria-label*="Attach"]']
 FILE_INPUT = ["input#upload-files", 'input[type="file"]:not([accept])', 'input[type="file"]']
+REASONING_EFFORT = ['form button:has-text("Extra High")', 'form button:has-text("Standard")', 'form button:has-text("Extended")', 'form button:has-text("Light")']
 MODEL_SWITCHER = ['button[data-testid="model-switcher-dropdown-button"]', 'button[aria-haspopup="menu"]:has-text("ChatGPT")']
 
 ASSISTANT_TURN = ['[data-message-author-role="assistant"]']

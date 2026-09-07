@@ -15,6 +15,23 @@ from .extract import Block, blocks_from_text
 
 
 # ---- model ---------------------------------------------------------------
+def current_effort(page: Page) -> str:
+    """The composer's reasoning-effort label (e.g. 'Extra High'), '' if not shown.
+    ChatGPT remembers this per account, so we only read it; we don't change the model."""
+    import re as _re
+    try:
+        form = page.locator("form").first
+        if not form.count():
+            return ""
+        for b in form.locator("button").all():
+            t = (b.inner_text() or "").strip()
+            if _re.fullmatch(r"(Auto|Light|Standard|Extended|High|Extra High)", t):
+                return t
+    except PWError:
+        return ""
+    return ""
+
+
 def current_model_label(page: Page) -> str:
     loc = first(page, S.MODEL_SWITCHER)
     if not loc:

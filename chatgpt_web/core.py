@@ -93,6 +93,7 @@ def status(cfg: Config | None = None) -> dict:
         page = pages[0] if pages else None
         session_state = sess.classify(page) if page else "no_tab"
         model = chat.current_model_label(page) if page else ""
+        effort = chat.current_effort(page) if page else ""
         open_chats = []
         for p in pages:
             if "/c/" in p.url:
@@ -103,6 +104,7 @@ def status(cfg: Config | None = None) -> dict:
         return {
             "session": session_state,
             "model_label": model,
+            "reasoning_effort": effort,
             "model_configured": {"slug": cfg.model_slug, "label": cfg.model_label, "strict": cfg.model_strict},
             "project": {"name": cfg.project, "url": project.cached_url(sess, cfg.project)},
             "open_chats": open_chats,
@@ -161,6 +163,7 @@ def new_chat(title_hint: str | None = None, cfg: Config | None = None) -> dict:
         try:
             url = project.find_project(sess, page, cfg.project, create=True)
             model = chat.ensure_model(sess, page, cfg.model_slug, cfg.model_label, cfg.model_strict)
+            model["reasoning_effort"] = chat.current_effort(page)
             handle = "tab:" + sess.target_id(page)
         except CgError:
             try:
